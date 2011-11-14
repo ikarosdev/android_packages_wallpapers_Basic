@@ -37,6 +37,7 @@ struct pulse_s {
     int startTime;
     float dx;
     float dy;
+    float scale;
     int active;
 };
 struct pulse_s gPulses[MAX_PULSES];
@@ -44,6 +45,7 @@ struct pulse_s gPulses[MAX_PULSES];
 struct pulse_s gExtras[MAX_EXTRAS];
 
 int gNow;
+
 
 void setColor(int c) {
     if (c == 0) {
@@ -58,17 +60,19 @@ void setColor(int c) {
 }
 
 void initPulse(struct pulse_s * pulse, int pulseType) {
+    float scale = randf2(0.7f, 1.7f);
+    pulse->scale = scale;
     if (randf(1) > 0.5f) {
         pulse->originX = (int)randf(State->width * 2 / PULSE_SIZE) * PULSE_SIZE;
         pulse->dx = 0;
         if (randf(1) > 0.5f) {
             // Top
             pulse->originY = 0;
-            pulse->dy = randf2(1.0f - SPEED_VARIANCE, 1.0 + SPEED_VARIANCE);
+            pulse->dy = scale;
         } else {
             // Bottom
-            pulse->originY = State->height;
-            pulse->dy = -randf2(1.0f - SPEED_VARIANCE, 1.0 + SPEED_VARIANCE);
+            pulse->originY = State->height / scale;
+            pulse->dy = -scale;
         }
     } else {
         pulse->originY = (int)randf(State->height / PULSE_SIZE) * PULSE_SIZE;
@@ -76,11 +80,11 @@ void initPulse(struct pulse_s * pulse, int pulseType) {
         if (randf(1) > 0.5f) {
             // Left
             pulse->originX = 0;
-            pulse->dx = randf2(1.0f - SPEED_VARIANCE, 1.0 + SPEED_VARIANCE);
+            pulse->dx = scale;
         } else {
             // Right
-            pulse->originX = State->width * 2;
-            pulse->dx = -randf2(1.0f - SPEED_VARIANCE, 1.0 + SPEED_VARIANCE);
+            pulse->originX = State->width * 2 / scale;
+            pulse->dx = -scale;
         }
     }
     pulse->startTime = gNow + (int)randf(MAX_DELAY);
@@ -109,22 +113,22 @@ void initPulses() {
 }
 
 void drawBackground(int width, int height) {
-    bindProgramFragment(NAMED_PFTextureBG);
+	bindProgramFragment(NAMED_PFTextureBG);
     bindTexture(NAMED_PFTextureBG, 0, NAMED_TBackground);
     color(1.0f, 1.0f, 1.0f, 1.0f);
     if (State->rotate) {
         drawRect(0.0f, 0.0f, height*2, width, 0.0f);
     } else {
     	drawRect(0.0f, 0.0f, width*2, height, 0.0f);
-    }
+   	}
 }
 
-
 void drawPulses(struct pulse_s * pulseSet, int setSize) {
-    bindProgramFragment(NAMED_PFTexture);
+	bindProgramFragment(NAMED_PFTexture);
     bindProgramFragmentStore(NAMED_PSBlend);
 
     float matrix[16];
+    float modelMatrix[16];
 
     int i;
     for (i=0; i<setSize; i++) {
@@ -133,6 +137,17 @@ void drawPulses(struct pulse_s * pulseSet, int setSize) {
  	    int delta = gNow - p->startTime;
 
     	if (p->active != 0 && delta >= 0) {
+
+	        matrixLoadIdentity(modelMatrix);
+            if (State->rotate) {
+                //matrixLoadRotate(modelMatrix, 90.0f, 0.0f, 0.0f, 1.0f);
+                //matrixTranslate(modelMatrix, 0.0f, -height, 1.0f);
+                // XXX: HAX: do not slide display in landscape
+            } else {
+                 matrixTranslate(modelMatrix, -(State->xOffset * State->width), 0, 0);
+            }
+            matrixScale(modelMatrix, p->scale, p->scale, 1.0f);
+            vpLoadModelMatrix(modelMatrix);
 
 	        float x = p->originX + (p->dx * SPEED * delta);
 	        float y = p->originY + (p->dy * SPEED * delta);
@@ -156,7 +171,6 @@ void drawPulses(struct pulse_s * pulseSet, int setSize) {
 	            }
 	        } else if (p->dx > 0) {
 				x += PULSE_SIZE; // need to start on the other side of this cell
-	            matrixRotate(matrix, 180.0f, 0.0f, 0.0f, 1.0f);
 	            vpLoadTextureMatrix(matrix);
 	            float xx = x - (TRAIL_SIZE * PULSE_SIZE);
 	 	        if (xx >= State->width * 2) {
@@ -164,7 +178,7 @@ void drawPulses(struct pulse_s * pulseSet, int setSize) {
 	            } else {
 	                setColor(p->color);
 	                bindTexture(NAMED_PFTexture, 0, NAMED_TPulse);
-	                drawRect(xx, y, x, y + PULSE_SIZE, 0.0f);
+	                drawRect(x, y, xx, y + PULSE_SIZE, 0.0f);
 	                bindTexture(NAMED_PFTexture, 0, NAMED_TGlow);
 	                drawRect(x - HALF_PULSE_SIZE - HALF_GLOW_SIZE,
 	                    y + HALF_PULSE_SIZE - HALF_GLOW_SIZE,
@@ -173,15 +187,14 @@ void drawPulses(struct pulse_s * pulseSet, int setSize) {
 	                    0.0f);
 	            }
 	        } else if (p->dy < 0) {
-	            matrixRotate(matrix, -90.0f, 0.0f, 0.0f, 1.0f);
 	            vpLoadTextureMatrix(matrix);
 	            float yy = y + (TRAIL_SIZE * PULSE_SIZE);
 	            if (yy <= 0) {
 	               initPulse(p, p->pulseType);
 	            } else {
 	                setColor(p->color);
-	                bindTexture(NAMED_PFTexture, 0, NAMED_TPulse);
-	                drawRect(x, y, x + PULSE_SIZE, yy, 0.0f);
+	                bindTexture(NAMED_PFTexture, 0, NAMED_TPulseVert);
+	                drawRect(x, yy, x + PULSE_SIZE, y, 0.0f);
 	                bindTexture(NAMED_PFTexture, 0, NAMED_TGlow);
 	                drawRect(x + HALF_PULSE_SIZE - HALF_GLOW_SIZE,
 	                    y + HALF_PULSE_SIZE - HALF_GLOW_SIZE,
@@ -191,14 +204,13 @@ void drawPulses(struct pulse_s * pulseSet, int setSize) {
 	            }
 	        } else if (p->dy > 0) {
 				y += PULSE_SIZE; // need to start on the other side of this cell
-	            matrixRotate(matrix, 90.0f, 0.0f, 0.0f, 1.0f);
 	            vpLoadTextureMatrix(matrix);
 	            float yy = y - (TRAIL_SIZE * PULSE_SIZE);
 	            if (yy >= State->height) {
 	               initPulse(p, p->pulseType);
 	            } else {
 	                setColor(p->color);
-	                bindTexture(NAMED_PFTexture, 0, NAMED_TPulse);
+	                bindTexture(NAMED_PFTexture, 0, NAMED_TPulseVert);
 	                drawRect(x, yy, x + PULSE_SIZE, y, 0.0f);
 	                bindTexture(NAMED_PFTexture, 0, NAMED_TGlow);
 	                drawRect(x + HALF_PULSE_SIZE - HALF_GLOW_SIZE,
@@ -220,26 +232,28 @@ void addTap(int x, int y) {
     int i;
     int count = 0;
     int color = (int)randf(4.0f);
+    float scale = randf2(0.9f, 1.9f);
     x = (int)(x / PULSE_SIZE) * PULSE_SIZE;
     y = (int)(y / PULSE_SIZE) * PULSE_SIZE;
     for (i=0; i<MAX_EXTRAS; i++) {
     	struct pulse_s * p = &gExtras[i];
     	if (p->active == 0) {
-            p->originX = x;
-            p->originY = y;
+            p->originX = x/scale;
+            p->originY = y/scale;
+            p->scale = scale;
 
             if (count == 0) {
-                p->dx = 1.5f;
+                p->dx = scale;
                 p->dy = 0.0f;
             } else if (count == 1) {
-                p->dx = -1.5f;
+                p->dx = -scale;
                 p->dy = 0.0f;
             } else if (count == 2) {
                 p->dx = 0.0f;
-                p->dy = 1.5f;
+                p->dy = scale;
             } else if (count == 3) {
                 p->dx = 0.0f;
-                p->dy = -1.5f;
+                p->dy = -scale;
             }
 
             p->active = 1;
